@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>FolderSocial v6.0</title>
+    <style>
+        :root { --bg: #0b0e11; --sidebar: #2f3136; --accent: #5865f2; --card: #18191c; --msg: #36393f; --red: #ed4245; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .hidden { display: none !important; }
+
+        /* Sidebar */
+        .sidebar { width: 250px; background: var(--sidebar); display: flex; flex-direction: column; border-right: 1px solid #202225; flex-shrink: 0; }
+        .nav-btn { padding: 12px; margin: 5px 10px; border-radius: 5px; cursor: pointer; color: #b9bbbe; }
+        .nav-btn.active { background: #4f545c; color: white; font-weight: bold; }
+
+        /* Main Content */
+        .main { flex: 1; display: flex; flex-direction: column; background: #36393f; position: relative; overflow: hidden; }
+        .scroll { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+
+        /* Post & Profile Cards */
+        .post-card, .profile-card { background: var(--card); width: 100%; max-width: 500px; border-radius: 12px; padding: 15px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .post-imgs img { width: 100%; border-radius: 8px; margin-top: 10px; display: block; }
+        
+        /* Comments UI */
+        .comment-section { background: #202225; border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 14px; }
+        .comment-item { border-bottom: 1px solid #333; padding: 5px 0; }
+        .comment-item b { color: var(--accent); }
+
+        /* Inputs */
+        input, textarea { width: 100%; padding: 10px; margin: 5px 0; border-radius: 6px; border: none; background: #202225; color: white; box-sizing: border-box; }
+        button { background: var(--accent); border: none; color: white; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+
+        /* Auth */
+        .auth-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen" class="auth-overlay">
+        <div style="background: var(--sidebar); padding: 30px; border-radius: 15px; width: 300px; text-align: center;">
+            <h2 id="auth-title">Вхід</h2>
+            <input type="email" id="u-email" placeholder="Email">
+            <input type="password" id="u-pass" placeholder="Пароль">
+            <div id="reg-box" class="hidden">
+                <input type="text" id="u-name-reg" placeholder="Нікнейм">
+                <input type="tel" id="u-phone" placeholder="Телефон">
+            </div>
+            <button onclick="handleAuth()" style="width:100%">Продовжити</button>
+            <p onclick="toggleReg()" style="font-size:12px; cursor:pointer; margin-top:15px; color:#aaa;">Змінити режим Вхід/Реєстрація</p>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div style="padding: 20px; font-weight: bold; color: var(--accent); font-size: 18px;">FolderSocial Pro</div>
+        <div class="nav-btn active" onclick="showTab('feed', this)">🏠 Стрічка</div>
+        <div class="nav-btn" onclick="showTab('chat', this)">💬 Чат</div>
+        <div class="nav-btn" onclick="showTab('profile', this)">👤 Профіль</div>
+        <button onclick="logout()" style="background:var(--red); margin: auto 10px 20px;">Вихід</button>
+    </div>
+
+    <div class="main">
+        <div id="tab-feed" class="scroll">
+            <div class="post-card">
+                <input type="text" id="p-title" placeholder="Назва поста...">
+                <textarea id="p-desc" placeholder="Опис..."></textarea>
+                <input type="file" id="p-files" multiple accept="image/*">
+                <button onclick="createPost()" style="width:100%; margin-top:5px;">Опублікувати</button>
+            </div>
+            <div id="feed-list" style="width:100%; display:flex; flex-direction:column; align-items:center;"></div>
+        </div>
+
+        <div id="tab-chat" class="scroll hidden">
+            <div id="chat-box" style="width:100%; max-width:600px; display:flex; flex-direction:column; gap:10px; padding-bottom:100px;"></div>
+            <div style="position:absolute; bottom:0; width:100%; padding:20px; background:var(--sidebar); display:flex; gap:10px; box-sizing:border-box;">
+                <input type="text" id="chat-input" placeholder="Повідомлення..." onkeydown="if(event.key==='Enter') sendChat()">
+                <button onclick="sendChat()">🚀</button>
+            </div>
+        </div>
+
+        <div id="tab-profile" class="scroll hidden">
+            <div class="profile-card" style="text-align:center;">
+                <img id="prof-img" src="https://via.placeholder.com/100" style="width:100px; height:100px; border-radius:50%; cursor:pointer; border:3px solid var(--accent);" onclick="document.getElementById('file-avatar').click()">
+                <input type="file" id="file-avatar" class="hidden" onchange="changeAvatar(this)">
+                <h2 id="prof-nick">Нікнейм</h2>
+                <input type="text" id="new-nick" placeholder="Змінити нікнейм">
+                <button onclick="saveNick()" style="width:100%">Зберегти нік</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let user = JSON.parse(localStorage.getItem('user'));
+        let posts = JSON.parse(localStorage.getItem('posts')) || [];
+        let messages = JSON.parse(localStorage.getItem('messages')) || [];
+        let isRegMode = false;
+
+        function init() {
+            if(!user) return;
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('prof-nick').innerText = user.name;
+            document.getElementById('prof-img').src = user.avatar || 'https://via.placeholder.com/100';
+            renderFeed();
+            renderChat();
+        }
+
+        function toggleReg() {
+            isRegMode = !isRegMode;
+            document.getElementById('auth-title').innerText = isRegMode ? "Реєстрація" : "Вхід";
+            document.getElementById('reg-box').classList.toggle('hidden');
+        }
+
+        function handleAuth() {
+            const email = document.getElementById('u-email').value;
+            const pass = document.getElementById('u-pass').value;
+            if(!email || !pass) return alert("Заповніть поля!");
+
+            const name = isRegMode ? document.getElementById('u-name-reg').value : email.split('@')[0];
+            const isAdmin = (email.includes('demidshuhina') || email.includes('sigmabooydi')) && pass === '2016Sd14';
+
+            user = { name, email, avatar: '', isAdmin };
+            localStorage.setItem('user', JSON.stringify(user));
+
+            if(isRegMode) {
+                const phone = document.getElementById('u-phone').value;
+                window.location.href = `mailto:demidshuhina@icloud.com?subject=NewUser&body=User:${name}, Phone:${phone}`;
+            }
+            location.reload();
+        }
+
+        async function createPost() {
+            const title = document.getElementById('p-title').value;
+            const desc = document.getElementById('p-desc').value;
+            const files = document.getElementById('p-files').files;
+            if(!title) return;
+
+            const imgs = await Promise.all(Array.from(files).map(f => new Promise(res => {
+                const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(f);
+            })));
+
+            posts.unshift({ id: Date.now(), author: user.name, title, desc, imgs, likes: 0, comments: [] });
+            localStorage.setItem('posts', JSON.stringify(posts));
+            location.reload();
+        }
+
+        function renderFeed() {
+            document.getElementById('feed-list').innerHTML = posts.map(p => `
+                <div class="post-card">
+                    <small style="color:var(--accent)">@${p.author}</small>
+                    <h3 style="margin:5px 0">${p.title}</h3>
+                    <p>${p.desc}</p>
+                    <div class="post-imgs">${p.imgs.map(i => `<img src="${i}">`).join('')}</div>
+                    <div style="margin-top:10px;">
+                        <button onclick="likePost(${p.id})" style="background:none; border:1px solid #444;">❤️ ${p.likes}</button>
+                    </div>
+                    <div class="comment-section">
+                        <div id="coms-${p.id}">${(p.comments || []).map(c => `<div class="comment-item"><b>${c.u}:</b> ${c.t}</div>`).join('')}</div>
+                        <input type="text" placeholder="Коментувати..." onkeydown="if(event.key==='Enter') addComment(event, ${p.id})">
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addComment(e, id) {
+            const p = posts.find(x => x.id === id);
+            if(!p.comments) p.comments = [];
+            p.comments.push({ u: user.name, t: e.target.value });
+            localStorage.setItem('posts', JSON.stringify(posts));
+            renderFeed();
+        }
+
+        function likePost(id) {
+            const p = posts.find(x => x.id === id);
+            p.likes++;
+            localStorage.setItem('posts', JSON.stringify(posts));
+            renderFeed();
+        }
+
+        function sendChat() {
+            const i = document.getElementById('chat-input');
+            if(!i.value) return;
+            messages.push({ u: user.name, t: i.value });
+            localStorage.setItem('messages', JSON.stringify(messages));
+            i.value = "";
+            renderChat();
+        }
+
+        function renderChat() {
+            document.getElementById('chat-box').innerHTML = messages.map(m => `
+                <div style="background:var(--msg); padding:10px; border-radius:8px; align-self:${m.u === user.name ? 'flex-end' : 'flex-start'}">
+                    <b style="font-size:10px; color:var(--accent)">${m.u}</b><br>${m.t}
+                </div>
+            `).join('');
+        }
+
+        function saveNick() {
+            user.name = document.getElementById('new-nick').value;
+            localStorage.setItem('user', JSON.stringify(user));
+            location.reload();
+        }
+
+        function changeAvatar(input) {
+            const r = new FileReader();
+            r.onload = e => {
+                user.avatar = e.target.result;
+                localStorage.setItem('user', JSON.stringify(user));
+                location.reload();
+            };
+            r.readAsDataURL(input.files[0]);
+        }
+
+        function showTab(t, btn) {
+            ['feed', 'chat', 'profile'].forEach(x => document.getElementById('tab-'+x).classList.add('hidden'));
+            document.getElementById('tab-'+t).classList.remove('hidden');
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function logout() { localStorage.clear(); location.reload(); }
+        init();
+    </script>
+</body>
+</html>
